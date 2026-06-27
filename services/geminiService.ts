@@ -149,7 +149,8 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
         { role: "system", content: BAZI_SYSTEM_INSTRUCTION },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.7
+      temperature: 0.7,
+      max_tokens: 16384
     };
     
     // Only add response_format for models that support it (not DeepSeek)
