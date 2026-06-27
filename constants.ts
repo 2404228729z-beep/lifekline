@@ -36,7 +36,7 @@ export const BAZI_SYSTEM_INSTRUCTION = `
       "score": 55,
       "reason": "简要流年批断..."
     },
-    ... (1-40岁，共40条)
+    ... (20-30岁，共10条)
   ],
   "bazi": ["年柱", "月柱", "日柱", "时柱"],
   "summary": "命理总评摘要。",
