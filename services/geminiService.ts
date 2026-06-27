@@ -1,4 +1,3 @@
-
 import { UserInput, LifeDestinyResult, Gender } from "../types";
 import { BAZI_SYSTEM_INSTRUCTION } from "../constants";
 
@@ -14,6 +13,53 @@ const getStemPolarity = (pillar: string): 'YANG' | 'YIN' => {
   return 'YANG'; // fallback
 };
 
+// Robust JSON extraction from model output
+// Handles: raw JSON, markdown code blocks, text with embedded JSON
+function extractJSON(content: string): any {
+  // 1. Try direct parse first
+  try {
+    return JSON.parse(content);
+  } catch {}
+
+  // 2. Try extracting from markdown code block (```json ... ``` or ``` ... ```)
+  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim());
+    } catch {}
+    // If the code block failed, try to find JSON inside it
+    const innerJSON = codeBlockMatch[1].match(/\{[\s\S]*\}/);
+    if (innerJSON) {
+      try {
+        return JSON.parse(innerJSON[0]);
+      } catch {}
+    }
+  }
+
+  // 3. Try to find a JSON object in the content (greedy match outermost braces)
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch {
+      // Try to fix common issues: trailing commas, unescaped chars
+      let fixed = jsonMatch[0]
+        .replace(/,\s*\}/g, '}')  // remove trailing commas
+        .replace(/,\s*\]/g, ']'); // remove trailing commas in arrays
+      try {
+        return JSON.parse(fixed);
+      } catch {}
+    }
+  }
+
+  throw new Error("无法从模型返回中提取有效的 JSON 数据。请尝试更换模型或重试。\n\n原始返回片段: " + content.substring(0, 500));
+}
+
+// Detect if the model is likely DeepSeek (which has different API behavior)
+function isDeepSeekModel(modelName: string): boolean {
+  return modelName.toLowerCase().includes('deepseek');
+}
+
 export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestinyResult> => {
   
   const { apiKey, apiBaseUrl, modelName } = input;
@@ -28,7 +74,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
   // Remove trailing slash if present
   const cleanBaseUrl = apiBaseUrl.replace(/\/+$/, "");
   // Use user provided model name or fallback
-  const targetModel = modelName && modelName.trim() ? modelName.trim() : "gemini-3-pro-preview";
+  const targetModel = modelName && modelName.trim() ? modelName.trim() : "deepseek-chat";
 
   const genderStr = input.gender === Gender.MALE ? '男 (乾造)' : '女 (坤造)';
   const startAgeInt = parseInt(input.startAge) || 1;
@@ -91,25 +137,33 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     3. 在 \`reason\` 字段中提供流年详批。
     4. 生成带评分的命理分析报告。
     
-    请严格按照系统指令生成 JSON 数据。
+    【重要】你必须只输出纯 JSON，不要包含任何解释文字、markdown 标记或代码块符号。
+    直接以 { 开头输出完整的 JSON 对象。
   `;
 
   try {
+    // Build request body - DeepSeek doesn't support response_format json_object
+    const requestBody: any = {
+      model: targetModel, 
+      messages: [
+        { role: "system", content: BAZI_SYSTEM_INSTRUCTION },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.7
+    };
+    
+    // Only add response_format for models that support it (not DeepSeek)
+    if (!isDeepSeekModel(targetModel)) {
+      requestBody.response_format = { type: "json_object" };
+    }
+
     const response = await fetch(`${cleanBaseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model: targetModel, 
-        messages: [
-          { role: "system", content: BAZI_SYSTEM_INSTRUCTION },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.7
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -121,15 +175,15 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     const content = jsonResult.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error("模型未返回任何内容。");
+      throw new Error("模型未返回任何内容，请检查 API Key 和 Base URL 是否正确。");
     }
 
-    // 解析 JSON
-    const data = JSON.parse(content);
+    // 使用鲁棒的 JSON 提取
+    const data = extractJSON(content);
 
     // 简单校验数据完整性
     if (!data.chartPoints || !Array.isArray(data.chartPoints)) {
-      throw new Error("模型返回的数据格式不正确（缺失 chartPoints）。");
+      throw new Error("模型返回的数据格式不正确（缺失 chartPoints）。请尝试重新生成。");
     }
 
     return {
@@ -151,7 +205,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
       },
     };
   } catch (error) {
-    console.error("Gemini/OpenAI API Error:", error);
+    console.error("API Error:", error);
     throw error;
   }
 };
