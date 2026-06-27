@@ -125,7 +125,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
        - Age ${startAgeInt} 到 ${startAgeInt + 9}: daYun = [第1步大运: ${input.firstDaYun}]
        - Age ${startAgeInt + 10} 到 ${startAgeInt + 19}: daYun = [第2步大运]
        - Age ${startAgeInt + 20} 到 ${startAgeInt + 29}: daYun = [第3步大运]
-       - ...以此类推直到 100 岁。
+       - ...以此类推直到 40 岁。
     
     【特别警告】
     - **daYun 字段**：必须填大运干支（10年一变），**绝对不要**填流年干支。
@@ -133,7 +133,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     
     任务：
     1. 确认格局与喜忌。
-    2. 生成 **1-100 岁 (虚岁)** 的人生流年K线数据。
+    2. 生成 **1-40 岁 (虚岁)** 的人生流年K线数据。
     3. 在 \`reason\` 字段中提供流年详批。
     4. 生成带评分的命理分析报告。
     
